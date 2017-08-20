@@ -1,6 +1,14 @@
 # AdobeUMInterface
 A PowerShell framework for communicating with Adobe's User Management API
 
+## General Request Pattern
+Each request sent to Adobe can be split up into 3 parts.
+You have an identity that you are trying to act on. (A user or group for example)
+You have actions that you want to perform on the identity.
+An identity and a list of actions together, make a full request. Keep this in mind when you look at the powershell functions.
+In general, you can run the Create-\*Action functions, add those to an array, then pass them on to the Create-\*Request functions. A list of Create-\*Request functions can then be sent to adobe for processing with the Send-UserManagementRequest.
+I encourage you to look at the structure of the returns objects from the Create-\*Request functions to get a better understanding.
+
 ## General Usage Instructions
 
 1) Create a service account and link it to your User Management binding. (Do this at https://console.adobe.io)
@@ -12,7 +20,7 @@ A PowerShell framework for communicating with Adobe's User Management API
 7) Call Get-AdobeAuthToken, to request an auth token from adobe.
 8) Utilize the other functions, and your ClientInformation variable to make further queries against your Adobe users.
 
-A complete example of the calls you should make after step 5 are below
+A complete example of the calls you should make after step 5 are below. This script below, creates a "add to group" action and then passes that to a "Create User" request. Then that request is sent to adobe for processing.
 ```
 #Load the Auth cert generated with Create-Cert
 $SignatureCert = Load-PFXCert -Password "MyPassword" -CertPath "C:\Certs\AdobeAuthPrivate.pfx"
@@ -25,7 +33,7 @@ $ClientInformation = New-ClientInformation -APIKey "1234123412341234" -Organizat
 Get-AdobeAuthToken -ClientInformation $ClientInformation -SignatureCert $SignatureCert
 
 #List Users
-$Users = Get-AdobeUsers -ClientInformation $ClientInformation
+#$Users = Get-AdobeUsers -ClientInformation $ClientInformation
 
 #Add a new user, and add them to a group in one adobe request
 $GroupAddAction = Create-GroupAddAction -Groups "All Apps Users"
