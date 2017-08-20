@@ -2,10 +2,12 @@
 A PowerShell framework for communicating with Adobe's User Management API
 
 ## General Request Pattern
-Each request sent to Adobe can be split up into 3 parts.
-You have an identity that you are trying to act on. (A user or group for example)
-You have actions that you want to perform on the identity.
+Each request sent to Adobe can be split up into 2 parts
+1) You have an identity that you are trying to act on. (A user or group for example)
+2) You have actions that you want to perform on the identity.
+
 An identity and a list of actions together, make a full request. Keep this in mind when you look at the powershell functions.
+
 In general, you can run the Create-\*Action functions, add those to an array, then pass them on to the Create-\*Request functions. A list of Create-\*Request functions can then be sent to adobe for processing with the Send-UserManagementRequest.
 I encourage you to look at the structure of the returns objects from the Create-\*Request functions to get a better understanding.
 
