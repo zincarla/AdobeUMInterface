@@ -229,7 +229,6 @@ function Get-AdobeAuthToken
 {
     Param
     (
-        [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation,
         [ValidateScript({$_.PrivateKey -ne $null})] 
         [Parameter(Mandatory=$true)]$SignatureCert, 
