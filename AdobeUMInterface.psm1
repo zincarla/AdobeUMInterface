@@ -1,4 +1,3 @@
-#Set Functions
 #region Helper functions (General use functions)
 <#
 .SYNOPSIS
@@ -157,6 +156,73 @@ function ConvertFrom-JavaTime
     return [DateTime]::FromFileTimeUtc($JavaTime*10000+[DateTime]::Parse("01/01/1970").ToFileTimeUtc())
 }
 
+
+<#
+.SYNOPSIS
+    Unpacks a JWT object into it's header, and body components. (Human readable format)
+
+.PARAMETER JWTObject
+    JWT To unpack. In format of {Base64Header}.{Base64Body}.{Base64Signature}
+
+.PARAMETER SigningCert
+    A certificate with the necesary public key to verify signature block. Can be null, will not validate signature.
+
+.NOTES
+    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
+    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
+  
+.EXAMPLE
+    Expand-JWTInformation -JWTObject "xxxx.xxxx.xxx"
+#>
+function Expand-JWTInformation
+{
+    Param
+    (
+        [ValidateScript({$_.Split(".").Length -eq 3})]
+        [Parameter(Mandatory=$true)][string]$JWTObject, 
+        $SigningCert
+    )
+    $JWTParts = $JWTObject.Split(".")
+    $Header =(ConvertFrom-Json -InputObject (ConvertFrom-Base64URL -String $JWTParts[0]));
+    $RawData = [System.Text.ASCIIEncoding]::ASCII.GetBytes($JWTParts[0]+"."+$JWTParts[1])
+
+    $Signature = [System.Convert]::FromBase64String((ConvertFrom-Base64URLToBase64 -String $JWTParts[2]))
+
+    $Valid= $null
+    if ($SigningCert -and $Header.alg.StartsWith("RS"))
+    {
+        $HAN=$null
+        if ($Header.alg.EndsWith("256"))
+        {
+            $HAN = [System.Security.Cryptography.HashAlgorithmName]::SHA256
+        }
+        elseif ($Header.alg.EndsWith("512"))
+        {
+            $Han = [System.Security.Cryptography.HashAlgorithmName]::SHA512
+        }
+        elseif ($Header.alg.EndsWith("384"))
+        {
+            $Han = [System.Security.Cryptography.HashAlgorithmName]::SHA384
+        }
+        if ($HAN)
+        {
+            $Valid = $SigningCert.PublicKey.Key.VerifyData($RawData, $Signature, $Han, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        }
+        else
+        {
+            Write-Warning "Hash algorithm not supported, the signature of the JWT was not verified."
+        }
+    }
+    else 
+    {
+        Write-Warning "Either no certificate was passed to function, or Hash algorithm not supported, either way, the signature of the JWT was not verified."
+    }
+    return (New-Object -TypeName PSObject -ArgumentList @{Header=$Header;
+                                                          Body=(ConvertFrom-Json -InputObject (ConvertFrom-Base64URL -String $JWTParts[1]));
+                                                          SignatureValid=$Valid})
+}
+
+
 #endregion
 
 #region Connection setup functions
@@ -286,9 +352,6 @@ function Get-AdobeAuthToken
 
 .PARAMETER Page
     You may manually specify a specific page to retrieve from Adobe. Otherwise a value < 0 will return all users
-
-.NOTES
-    https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
   
 .EXAMPLE
     Get-AdobeUsers -ClientInformation $MyClient
@@ -302,11 +365,12 @@ function Get-AdobeUsers
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation
     )
+    #https://adobe-apiplatform.github.io/umapi-documentation/en/api/user.html
     #Store the results here
     $Results = @()
 
     #URI of the query endpoint
-    $URIPrefix = "$UM_Server/users/$($ClientInformation.OrgID)/"
+    $URIPrefix = $UM_Server+"users/$($ClientInformation.OrgID)/"
 
     $LoopToEnd = $true;
     if ($Page -lt 0) {
@@ -324,7 +388,7 @@ function Get-AdobeUsers
     while($true)
     {
         $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix+$Page.ToString()) -Header $Headers
-        if ($QueryResponse.error_code.ToString().StartsWith("429")) {
+        if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
             #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
             #I never got blocked testing this, not sure if this is needed, but just in case it does
             Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 1 minute and continue."
@@ -387,7 +451,7 @@ function Get-AdobeUser
     #Query
     while($true) {
         $QueryResponse = Invoke-RestMethod -Method Get -Uri $URIPrefix -Header $Headers
-        if ($QueryResponse.error_code.ToString().StartsWith("429")) {
+        if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
             #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
             #I never got blocked testing this, not sure if this is needed, but just in case it does
             Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 1 minute and continue."
@@ -415,10 +479,7 @@ function Get-AdobeUser
     The adobe user management uri. Defaults to "https://usermanagement.adobe.io/v2/usermanagement/"
 
 .PARAMETER GroupID
-    If you wish to query for a single group instead, put the group ID here
-
-.NOTES
-    https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
+    If you wish to query for a single group instead, put the group ID here. [DEPRECATED!]
   
 .EXAMPLE
     Get-AdobeGroups -ClientInformation $MyClient
@@ -435,15 +496,16 @@ function Get-AdobeGroups
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation
     )
-    #See https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
     $Results = @()
     if ($GroupID -eq $null)
     {
-        $URIPrefix = "$UM_SERVER$($ClientInformation.OrgID)/user-groups?page="
+        $URIPrefix = $UM_SERVER+"/groups/$($ClientInformation.OrgID)/"
     }
     else
     {
         $URIPrefix = "$UM_SERVER$($ClientInformation.OrgID)/user-groups/$GroupID"
+        #https://adobe-apiplatform.github.io/umapi-documentation/en/api/group.html
+        Write-Warning "This function is deprecated for use in getting a single group. There does not appear to be a replacement for this in the new API."
     }
     $Page =0
 
@@ -457,15 +519,19 @@ function Get-AdobeGroups
         while($true)
         {
             $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix+$Page.ToString()) -Header $Headers
-            if ($Results -ne $null -and (@()+$Results.groupId).Contains($QueryResponse[0].groupId))
-            {
-                break; #Why you ask? Because Adobe will just return any results they can anyway! If you have 1 page of results, and you ask for page 4, do they error? Noooo. Do they say last page? Nooo!
+            if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
+                #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+                #I never got blocked testing this, not sure if this is needed, but just in case it does
+                Write-Warning "Adobe is throttling our query. This cmdlet will now sleep 1 minute and continue."
+                Start-Sleep -Seconds 60
             }
-            $Results += $QueryResponse
-            $Page++;
-            if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.Length -eq 0)
-            {
-                break
+            else {
+                $Results += $QueryResponse.groups
+                $Page++;
+                if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.Length -eq 0)
+                {
+                    break
+                }
             }
         }
     }
@@ -489,12 +555,9 @@ function Get-AdobeGroups
 
 .PARAMETER GroupName
     The Name of the group to query
-
-.NOTES
-    https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
   
 .EXAMPLE
-    Get-AdobeGroupMembers -ClientInformation $MyClient -GroupID "222424"
+    Get-AdobeGroupMembers -ClientInformation $MyClient -GroupName "All Apps Users"
 #>
 function Get-AdobeGroupMembers
 {
@@ -505,10 +568,9 @@ function Get-AdobeGroupMembers
         [Parameter(Mandatory=$true)]$ClientInformation, 
         [Parameter(Mandatory=$true)][string]$GroupName
     )
-    #See https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
     $Results = @()
 
-    $URIPrefix = $UM_SERVER+"users/$($ClientInformation.OrgID)/{PAGE}/$GroupName"
+    $URIPrefix = $UM_SERVER+"users/$($ClientInformation.OrgID)/{PAGE}/$GroupName" #Yes page before groupname...
     $Page =0
 
     #Request headers
@@ -520,11 +582,20 @@ function Get-AdobeGroupMembers
     while($true)
     {
         $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix.Replace("{PAGE}", $Page.ToString())) -Header $Headers
-        $Results += $QueryResponse.users
-        $Page++;
-        if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.users.Length -eq 0)
+        if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
+            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+            #I never got blocked testing this, not sure if this is needed, but just in case it does
+            Write-Warning "Adobe is throttling our query. This cmdlet will now sleep 1 minute and continue."
+            Start-Sleep -Seconds 60
+        }
+        else 
         {
-            break
+            $Results += $QueryResponse.users
+            $Page++;
+            if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.users.Length -eq 0)
+            {
+                break
+            }
         }
     }
     return $Results
@@ -542,12 +613,9 @@ function Get-AdobeGroupMembers
 
 .PARAMETER GroupName
     The Name of the group to query
-
-.NOTES
-    https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
   
 .EXAMPLE
-    Get-AdobeGroupAdmins -ClientInformation $MyClient -GroupID "222424"
+    Get-AdobeGroupAdmins -ClientInformation $MyClient -GroupName "All Apps Users"
 #>
 function Get-AdobeGroupAdmins
 {
@@ -830,71 +898,6 @@ function New-RemoveFromGroupRequest
 
 <#
 .SYNOPSIS
-    Unpacks a JWT object into it's header, and body components. (Human readable format)
-
-.PARAMETER JWTObject
-    JWT To unpack. In format of {Base64Header}.{Base64Body}.{Base64Signature}
-
-.PARAMETER SigningCert
-    A certificate with the necesary public key to verify signature block. Can be null, will not validate signature.
-
-.NOTES
-    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
-    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
-  
-.EXAMPLE
-    Expand-JWTInformation -JWTObject "xxxx.xxxx.xxx"
-#>
-function Expand-JWTInformation
-{
-    Param
-    (
-        [ValidateScript({$_.Split(".").Length -eq 3})]
-        [Parameter(Mandatory=$true)][string]$JWTObject, 
-        $SigningCert
-    )
-    $JWTParts = $JWTObject.Split(".")
-    $Header =(ConvertFrom-Json -InputObject (ConvertFrom-Base64URL -String $JWTParts[0]));
-    $RawData = [System.Text.ASCIIEncoding]::ASCII.GetBytes($JWTParts[0]+"."+$JWTParts[1])
-
-    $Signature = [System.Convert]::FromBase64String((ConvertFrom-Base64URLToBase64 -String $JWTParts[2]))
-
-    $Valid= $null
-    if ($SigningCert -and $Header.alg.StartsWith("RS"))
-    {
-        $HAN=$null
-        if ($Header.alg.EndsWith("256"))
-        {
-            $HAN = [System.Security.Cryptography.HashAlgorithmName]::SHA256
-        }
-        elseif ($Header.alg.EndsWith("512"))
-        {
-            $Han = [System.Security.Cryptography.HashAlgorithmName]::SHA512
-        }
-        elseif ($Header.alg.EndsWith("384"))
-        {
-            $Han = [System.Security.Cryptography.HashAlgorithmName]::SHA384
-        }
-        if ($HAN)
-        {
-            $Valid = $SigningCert.PublicKey.Key.VerifyData($RawData, $Signature, $Han, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-        }
-        else
-        {
-            Write-Warning "Hash algorithm not supported, the signature of the JWT was not verified."
-        }
-    }
-    else 
-    {
-        Write-Warning "Either no certificate was passed to function, or Hash algorithm not supported, either way, the signature of the JWT was not verified."
-    }
-    return (New-Object -TypeName PSObject -ArgumentList @{Header=$Header;
-                                                          Body=(ConvertFrom-Json -InputObject (ConvertFrom-Base64URL -String $JWTParts[1]));
-                                                          SignatureValid=$Valid})
-}
-
-<#
-.SYNOPSIS
     Sends a request, or array of requests, to adobe's user management endpoint
 
 .PARAMETER ClientInformation
@@ -920,7 +923,7 @@ function Send-UserManagementRequest
     #Ensure is array
     $Request = @()+$Requests
     $Request = ConvertTo-Json -InputObject $Request -Depth 10 -Compress
-
+    #https://adobe-apiplatform.github.io/umapi-documentation/en/api/ActionsRef.html
     $URI = "https://usermanagement.adobe.io/v2/usermanagement/action/$($ClientInformation.OrgID)"
     $Headers = @{Accept="application/json";
             "Content-Type"="application/json";
@@ -934,11 +937,11 @@ function Send-UserManagementRequest
 .SYNOPSIS
     Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
 
-.PARAMETER ADGroupID
+.PARAMETER ADGroupName
     Active Directory Group Identifier (Name or DN). The source group to mirror to adobe
 
-.PARAMETER AdobeGroupID
-    Adobe group ID as retured from Get-AdobeGroups
+.PARAMETER AdobeGroupName
+    Adobe group Name
 
 .PARAMETER ClientInformation
     Service account information including token
