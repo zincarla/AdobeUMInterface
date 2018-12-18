@@ -1,6 +1,6 @@
 # AdobeUMInterface
 
-A PowerShell module for communicating with Adobe's User Management API
+A PowerShell module for communicating with Adobe's User Management API. **Warning**, if you used prior versions of these functions, they are not compatible with recent changes. Most functions have been updated to use the [non-deprecated API functions.](https://adobe-apiplatform.github.io/umapi-documentation/en/api/DeprecatedApis.html)
 
 ## General Request Pattern
 
