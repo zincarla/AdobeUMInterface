@@ -943,13 +943,16 @@ function Send-UserManagementRequest
     Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
 
 .PARAMETER ADGroupID
-    Active Directory Group Identifier. The source group to mirror to adobe
+    Active Directory Group Identifier (Name or DN). The source group to mirror to adobe
 
 .PARAMETER AdobeGroupID
     Adobe group ID as retured from Get-AdobeGroups
 
 .PARAMETER ClientInformation
     Service account information including token
+
+.PARAMETER RecurseADGroupMembers
+    If specified, will pull all users in all groups in and under the specified ADGroup
   
 .EXAMPLE
     New-SyncADGroupRequest -ADGroupID "SG-My-Approved-Adobe-Users" -AdobeGroupID "111222422" -ClientInformation $MyClientInfo
@@ -960,13 +963,14 @@ function New-SyncADGroupRequest
     (
         [Parameter(Mandatory=$true)][string]$ADGroupID, 
         [Parameter(Mandatory=$true)][string]$AdobeGroupID, 
+        [switch]$RecurseADGroupMembers,
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation
     )
     #Grab a list of all adobe groups
     $AdobeGroupInfo = Get-AdobeGroups -GroupID $AdobeGroupID -ClientInformation $ClientInformation
     #Grab a list of users in the Active Directory group
-    $ADGroupMembers = Get-ADGroupMember -Identity $ADGroupID | Where-Object -FilterScript {$_.ObjectClass -eq "user"}
+    $ADGroupMembers = Get-ADGroupMember -Identity $ADGroupID -Recursive:$RecurseADGroupMembers | Where-Object -FilterScript {$_.ObjectClass -eq "user"}
     #Get extended property data on all users. (So we can get e-mail)
     $ADUsers = @()
     foreach ($ADGroupMember in $ADGroupMembers)
