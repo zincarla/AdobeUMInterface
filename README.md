@@ -71,7 +71,7 @@ Get-AdobeAuthToken -ClientInformation $ClientInformation -SignatureCert $Signatu
 
 #Sync AD Group to Adobe
 #You can get the groupid by running Get-AdobeGroups
-$Request = New-SyncADGroupRequest -ADGroupID "My-AD-Group" -AdobeGroupID "11111111" -ClientInformation $ClientInformation
+$Request = New-SyncADGroupRequest -ADGroupName "My-AD-Group" -AdobeGroupName "All Apps Users" -ClientInformation $ClientInformation
 
 #ToReview, uncomment
 #Write-Host ($Request | ConvertTo-JSON -Depth 10)

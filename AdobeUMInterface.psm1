@@ -487,8 +487,8 @@ function Get-AdobeGroups
 .PARAMETER UM_Server 
     The adobe user management uri. Defaults to "https://usermanagement.adobe.io/v2/usermanagement/"
 
-.PARAMETER GroupID
-    The ID of the group to query
+.PARAMETER GroupName
+    The Name of the group to query
 
 .NOTES
     https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
@@ -503,12 +503,12 @@ function Get-AdobeGroupMembers
         [string]$UM_Server="https://usermanagement.adobe.io/v2/usermanagement/",
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation, 
-        [Parameter(Mandatory=$true)][string]$GroupID
+        [Parameter(Mandatory=$true)][string]$GroupName
     )
     #See https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
     $Results = @()
 
-    $URIPrefix = "$UM_SERVER$($ClientInformation.OrgID)/user-groups/$GroupID/users?page="
+    $URIPrefix = $UM_SERVER+"users/$($ClientInformation.OrgID)/{PAGE}/$GroupName"
     $Page =0
 
     #Request headers
@@ -519,14 +519,10 @@ function Get-AdobeGroupMembers
 
     while($true)
     {
-        $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix) -Header $Headers
-        if ($Results -ne $null -and (@()+$Results.id).Contains($QueryResponse[0].id))
-        {
-            break; #Why you ask? Because Adobe will just return any results they can anyway! If you have 1 page of results, and you ask for page 4, do they error? Noooo. Do they say last page? Nooo!
-        }
-        $Results += $QueryResponse
+        $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix.Replace("{PAGE}", $Page.ToString())) -Header $Headers
+        $Results += $QueryResponse.users
         $Page++;
-        if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.Length -eq 0)
+        if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.users.Length -eq 0)
         {
             break
         }
@@ -544,8 +540,8 @@ function Get-AdobeGroupMembers
 .PARAMETER UM_Server 
     The adobe user management uri. Defaults to "https://usermanagement.adobe.io/v2/usermanagement/"
 
-.PARAMETER GroupID
-    The ID of the group to query
+.PARAMETER GroupName
+    The Name of the group to query
 
 .NOTES
     https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
@@ -560,12 +556,12 @@ function Get-AdobeGroupAdmins
         $UM_Server="https://usermanagement.adobe.io/v2/usermanagement/",
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation, 
-        [Parameter(Mandatory=$true)][string]$GroupID
+        [Parameter(Mandatory=$true)][string]$GroupName
     )
     #See https://www.adobe.io/apis/cloudplatform/usermanagement/docs/samples/samplequery.html
     $Results = @()
 
-    $URIPrefix = "$UM_SERVER$($ClientInformation.OrgID)/user-groups/$GroupID/admins?page="
+    $URIPrefix = $UM_SERVER+"users/$($ClientInformation.OrgID)/{PAGE}/_admin_$GroupName"
     $Page =0
 
     #Request headers
@@ -576,14 +572,10 @@ function Get-AdobeGroupAdmins
 
     while($true)
     {
-        $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix) -Header $Headers
-        if ($Results -ne $null -and (@()+$Results.id).Contains($QueryResponse[0].id))
-        {
-            break; #Why you ask? Because Adobe will just return any results they can anyway! If you have 1 page of results, and you ask for page 4, do they error? Noooo. Do they say last page? Nooo!
-        }
-        $Results += $QueryResponse
+        $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix.Replace("{PAGE}", $Page.ToString())) -Header $Headers
+        $Results += $QueryResponse.users
         $Page++;
-        if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.Length -eq 0)
+        if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.users.Length -eq 0)
         {
             break
         }
@@ -955,22 +947,20 @@ function Send-UserManagementRequest
     If specified, will pull all users in all groups in and under the specified ADGroup
   
 .EXAMPLE
-    New-SyncADGroupRequest -ADGroupID "SG-My-Approved-Adobe-Users" -AdobeGroupID "111222422" -ClientInformation $MyClientInfo
+    New-SyncADGroupRequest -ADGroupName "SG-My-Adobe-Users" -AdobeGroupName "All Apps Users" -ClientInformation $MyClientInfo
 #>
 function New-SyncADGroupRequest
 {
     Param
     (
-        [Parameter(Mandatory=$true)][string]$ADGroupID, 
-        [Parameter(Mandatory=$true)][string]$AdobeGroupID, 
+        [Parameter(Mandatory=$true)][string]$ADGroupName, 
+        [Parameter(Mandatory=$true)][string]$AdobeGroupName, 
         [switch]$RecurseADGroupMembers,
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation
     )
-    #Grab a list of all adobe groups
-    $AdobeGroupInfo = Get-AdobeGroups -GroupID $AdobeGroupID -ClientInformation $ClientInformation
     #Grab a list of users in the Active Directory group
-    $ADGroupMembers = Get-ADGroupMember -Identity $ADGroupID -Recursive:$RecurseADGroupMembers | Where-Object -FilterScript {$_.ObjectClass -eq "user"}
+    $ADGroupMembers = Get-ADGroupMember -Identity $ADGroupName -Recursive:$RecurseADGroupMembers | Where-Object -FilterScript {$_.ObjectClass -eq "user"}
     #Get extended property data on all users. (So we can get e-mail)
     $ADUsers = @()
     foreach ($ADGroupMember in $ADGroupMembers)
@@ -979,9 +969,9 @@ function New-SyncADGroupRequest
     }
     #Grab a list of users from the adobe group
     $Members = @()
-    $ADBMembers = Get-AdobeGroupMembers -ClientInformation $ClientInformation -GroupID $AdobeGroupID
+    $ADBMembers = Get-AdobeGroupMembers -ClientInformation $ClientInformation -GroupName $AdobeGroupName
     if ($ADBMembers -ne $null) {
-        $Members += $ADBMembers
+        $Members += $ADBMembers.email | ForEach-Object {$_.ToLower()}
     }
 
     #Results
@@ -991,20 +981,20 @@ function New-SyncADGroupRequest
     foreach ($ADUser in $ADUsers)
     {
         #If adobe group does not contain ad user
-        if ($Members.Length -le 0 -or -not $Members.Contains($ADUser.mail))
+        if ($Members.Length -le 0 -or -not $Members.Contains($ADUser.mail.ToLower()))
         {
-            $AddToGroup = New-GroupUserAddAction -Groups $AdobeGroupInfo.name
+            $AddToGroup = New-GroupUserAddAction -Groups $AdobeGroupName
             #Need to add
-            $Request += New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail -Country "US" -AdditionalActions $AddToGroup
+            $Request += New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup
         }
     }
     #Find excess members and create requests to remove them
     foreach ($Member in $Members)
     {
-        if (-not (@()+$ADUsers.mail).Contains($Member))
+        if (-not (@()+($ADUsers.mail|ForEach-Object {$_.ToLower()})).Contains($Member))
         {
             #Need to remove
-            $Request += New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupInfo.name
+            $Request += New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupName
         }
     }
     #return our list of requests
