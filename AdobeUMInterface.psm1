@@ -867,8 +867,8 @@ function New-AddToGroupRequest
         [Parameter(Mandatory=$true)][string]$User, 
         [Parameter(Mandatory=$true)]$Groups
     )
-    $GroupAddAction = New-GroupUserAddAction -GroupNames $Groups
-    return return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupAddAction})
+    $GroupAddAction = New-GroupUserAddAction -Groups $Groups
+    return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupAddAction})
 }
 
 <#
