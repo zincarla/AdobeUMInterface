@@ -28,7 +28,7 @@ A complete example of the calls you should make after step 5 are below. This scr
 
 ```powershell
 #Load the Auth cert generated with New-Cert
-$SignatureCert = Load-PFXCert -Password "MyPassword" -CertPath "C:\Certs\AdobeAuthPrivate.pfx"
+$SignatureCert = Import-PFXCert -Password "MyPassword" -CertPath "C:\Certs\AdobeAuthPrivate.pfx"
 
 #Client info from https://console.adobe.io/
 $ClientInformation = New-ClientInformation -APIKey "1234123412341234" -OrganizationID "1234123412341234@AdobeOrg" -ClientSecret "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx" `
