@@ -414,7 +414,7 @@ function Get-AdobeUsers
 
 <#
 .SYNOPSIS
-    Gets a user from the adobe API
+    Gets a single user from the adobe API
 
 .PARAMETER ClientInformation 
     Your ClientInformation object
@@ -641,11 +641,20 @@ function Get-AdobeGroupAdmins
     while($true)
     {
         $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix.Replace("{PAGE}", $Page.ToString())) -Header $Headers
-        $Results += $QueryResponse.users
-        $Page++;
-        if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.users.Length -eq 0)
+        if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
+            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+            #I never got blocked testing this, not sure if this is needed, but just in case it does
+            Write-Warning "Adobe is throttling our query. This cmdlet will now sleep 1 minute and continue."
+            Start-Sleep -Seconds 60
+        }
+        else 
         {
-            break
+            $Results += $QueryResponse.users
+            $Page++;
+            if ($QueryResponse.lastPage -eq $true -or $QueryResponse -eq $null -or $QueryResponse.users.Length -eq 0)
+            {
+                break
+            }
         }
     }
     return $Results
@@ -734,7 +743,7 @@ function New-CreateUserRequest
 
 <#
 .SYNOPSIS
-    Creates a "RemoveUserRequest" object. This object can then be converted to JSON and sent to remove a user frin adibe
+    Creates a "RemoveUserRequest" object. This object can then be converted to JSON and sent to remove a user from adobe
 
 .PARAMETER UserName
     User's ID, usually e-mail
@@ -948,6 +957,12 @@ function Send-UserManagementRequest
 
 .PARAMETER RecurseADGroupMembers
     If specified, will pull all users in all groups in and under the specified ADGroup
+
+.PARAMETER DeleteRemovedMembers
+    Removes users from the Adobe Console if they have been removed from the group
+
+.NOTES
+    If you accidently remove an admin account using DeleteRemovedMembers, you can still recover using the API.
   
 .EXAMPLE
     New-SyncADGroupRequest -ADGroupName "SG-My-Adobe-Users" -AdobeGroupName "All Apps Users" -ClientInformation $MyClientInfo
@@ -959,6 +974,7 @@ function New-SyncADGroupRequest
         [Parameter(Mandatory=$true)][string]$ADGroupName, 
         [Parameter(Mandatory=$true)][string]$AdobeGroupName, 
         [switch]$RecurseADGroupMembers,
+        [switch]$DeleteRemovedMembers,
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation
     )
@@ -1007,8 +1023,15 @@ function New-SyncADGroupRequest
     {
         if (-not (@()+($ADUsers.mail|ForEach-Object {$_.ToLower()})).Contains($Member))
         {
-            #Need to remove
-            $Request += New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupName
+            if ($DeleteRemovedMembers) {
+                #Remove user from Adobe Console entirely
+                $Request += New-RemoveUserRequest -UserName $Member
+            }
+            else
+            {
+                #Need to remove
+                $Request += New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupName
+            }
         }
     }
     #return our list of requests
