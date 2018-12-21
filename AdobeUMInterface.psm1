@@ -867,8 +867,8 @@ function New-AddToGroupRequest
         [Parameter(Mandatory=$true)][string]$User, 
         [Parameter(Mandatory=$true)]$Groups
     )
-    $GroupAddAction = New-GroupUserAddAction -GroupNames $Groups
-    return return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupAddAction})
+    $GroupAddAction = New-GroupUserAddAction -Groups $Groups
+    return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupAddAction})
 }
 
 <#
@@ -977,6 +977,9 @@ function New-SyncADGroupRequest
         $Members += $ADBMembers.email | ForEach-Object {$_.ToLower()}
     }
 
+    #Grab all Adobe Users 
+    $AdobeUsers = Get-AdobeUsers -ClientInformation $ClientInformation
+
     #Results
     $Request = @()
 
@@ -986,9 +989,17 @@ function New-SyncADGroupRequest
         #If adobe group does not contain ad user
         if ($Members.Length -le 0 -or -not $Members.Contains($ADUser.mail.ToLower()))
         {
-            $AddToGroup = New-GroupUserAddAction -Groups $AdobeGroupName
-            #Need to add
-            $Request += New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup
+            #Check if user already exists
+            if ($AdobeUsers.email -contains $ADUser.mail.ToLower()) 
+            {
+                $Request += New-AddToGroupRequest -User $ADUser.mail.ToLower() -Groups $AdobeGroupName
+            }
+            else 
+            {
+                $AddToGroup = New-GroupUserAddAction -Groups $AdobeGroupName
+                #Need to add
+                $Request += New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup
+            }
         }
     }
     #Find excess members and create requests to remove them
