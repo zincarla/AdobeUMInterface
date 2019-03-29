@@ -169,8 +169,7 @@ function ConvertFrom-JavaTime
 
 .NOTES
     See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
-    This should be posted to 
-    action/{myOrgID}
+    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
   
 .EXAMPLE
     Expand-JWTInformation -JWTObject "xxxx.xxxx.xxx"
