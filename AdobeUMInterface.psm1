@@ -169,7 +169,8 @@ function ConvertFrom-JavaTime
 
 .NOTES
     See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
-    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
+    This should be posted to 
+    action/{myOrgID}
   
 .EXAMPLE
     Expand-JWTInformation -JWTObject "xxxx.xxxx.xxx"
@@ -441,7 +442,7 @@ function Get-AdobeUser
         [Parameter(Mandatory=$true)]$ClientInformation
     )
     #URI of the query endpoint
-    $URIPrefix = "$UM_Server/organizations/$($ClientInformation.OrgID)/users/$UserID"
+    $URIPrefix = "$(UM_Server)organizations/$($ClientInformation.OrgID)/users/$UserID"
 
     #Request headers
     $Headers = @{Accept="application/json";
