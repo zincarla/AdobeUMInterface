@@ -499,7 +499,7 @@ function Get-AdobeGroups
     $Results = @()
     if ($GroupID -eq $null)
     {
-        $URIPrefix = $UM_SERVER+"/groups/$($ClientInformation.OrgID)/"
+        $URIPrefix = $UM_SERVER+"groups/$($ClientInformation.OrgID)/"
     }
     else
     {
