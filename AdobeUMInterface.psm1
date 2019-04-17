@@ -57,14 +57,83 @@ function New-Cert
 #>
 function Import-PFXCert
 {
+    [Obsolete("This cmdlet is obsolete. Please use Import-AdobeUMCert instead.")] 
     Param
     (
         [string]$Password,
         [ValidateScript({Test-Path -Path $_})]
         [Parameter(Mandatory=$true)][string]$CertPath
     )
-    $Collection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new() #Because I could not get the private key utilizing "cert:\etc\etc"
+    $Collection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
     $Collection.Import($CertPath, $Password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet)
+    return $Collection[0]
+}
+
+<#
+.SYNOPSIS
+    Load a certificate with a private key from either a file or from a certificate store
+
+.PARAMETER Password
+    Password to open PFX
+
+.PARAMETER CertPath
+    Path to PFX File
+
+.PARAMETER CertThumbprint
+    Thumbprint of the cert to load
+
+.PARAMETER CertStore
+    Which store to load cert from (LocalMachine or CurrentUser)
+
+.NOTES
+    If you hard-code the password in a script utilizing this function, you should ensure the script is itself, somewhere secure.
+    The account running this function may need additional permissions to load private key from LocalMachine store.
+
+.EXAMPLE
+    Import-AdobeUMCert -Password "ASDF" -CertPath "C:\Cert.pfx"
+
+.EXAMPLE
+    Import-AdobeUMCert -CertThumbprint "00000000000000000000000000000000" -CertStore "LocalMachine"
+#>
+function Import-AdobeUMCert
+{
+    Param
+    (
+        [Parameter(Mandatory=$true,ParameterSetName='FromFile')][string]$Password,
+        [ValidateScript({Test-Path -Path $_})]
+        [Parameter(Mandatory=$true,ParameterSetName='FromFile')][string]$CertPath,
+        [Parameter(Mandatory=$true,ParameterSetName='FromStore')][string]$CertThumbprint,
+        [Parameter(Mandatory=$true,ParameterSetName='FromStore')][ValidateSet('CurrentUser','LocalMachine')]$CertStore
+    )
+    $Collection = @()
+    if ($PSCmdlet.ParameterSetName -eq "FromStore") {
+        #Convert cert store to the correct enum value
+        if ($CertStore -eq "CurrentUser") {
+            $CertStore = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+        } elseif ($CertStore -eq "LocalMachine") {
+            $CertStore = [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+        }
+        #Open the certificate store
+        $Store = New-Object -TypeName System.Security.Cryptography.X509Certificates.x509Store -ArgumentList @($CertStore)
+        $Store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+
+        #Cleanup Thumbprint (Remove spaces, make uppercase, and remove hidden null characters from copy-paste)
+        $CertThumbprint = $CertThumbprint.ToUpper() -replace "[^\w\d]",""
+
+        #Now search for certificate by thumbprint
+        $Collection = $Store.Certificates.Find([System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint, $CertThumbprint, $false)
+        $Store.Dispose() #Make sure we cleanup after ourselves
+    }
+    elseif ($PSCmdlet.ParameterSetName -eq "FromFile")
+    {
+        #Load cert in by file
+        $Collection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
+        $Collection.Import($CertPath, $Password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet)
+    }
+    if ($Collection.Length -lt 1) {
+        Write-Error "Did not find any certificates in specified store"
+        return $null
+    }
     return $Collection[0]
 }
 
@@ -1074,4 +1143,4 @@ Export-ModuleMember -Function "New-Cert", "Import-PFXCert", "ConvertTo-Base64URL
                                 "Get-AdobeGroups", "Get-AdobeGroupMembers", "Get-AdobeGroupAdmins", "New-CreateUserRequest", "New-RemoveUserRequest", 
                                 "New-RemoveUserFromGroupRequest", "New-GroupUserAddAction", "New-GroupUserRemoveAction", "New-AddToGroupRequest", 
                                 "New-RemoveFromGroupRequest", "Expand-JWTInformation", "Send-UserManagementRequest", "New-SyncADGroupRequest", 
-                                "New-RemoveUnusedAbobeUsersRequest", "Get-AdobeUser"
+                                "New-RemoveUnusedAbobeUsersRequest", "Get-AdobeUser", "Import-AdobeUMCert"

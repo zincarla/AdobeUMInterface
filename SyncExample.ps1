@@ -3,7 +3,8 @@ $ScriptDir = split-path -parent $MyInvocation.MyCommand.Definition
 Import-Module "$ScriptDir\AdobeUMInterface.psm1"
 
 #Load cert for auth
-$SignatureCert = Import-PFXCert -Password "MyPassword" -CertPath "$ScriptDir\Private.pfx"
+#$SignatureCert = Import-AdobeUMCert -Password "MyPassword" -CertPath "$ScriptDir\Private.pfx"
+$SignatureCert = Import-AdobeUMCert -CertThumbprint "00000000000000000000000000000000" -CertStore "LocalMachine"
 
 #Client info from https://console.adobe.io/
 $ClientInformation = New-ClientInformation -APIKey "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" -OrganizationID "xxxxxxxxxxxxxxxxxxxxxxxx@AdobeOrg" -ClientSecret "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `

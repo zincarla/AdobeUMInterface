@@ -17,10 +17,10 @@ I encourage you to look at the structure of the returns objects from the New-\*R
 
 1) Create a service account/integration and link it to your User Management binding. (Do this at [Adobe's Console](https://console.adobe.io))
 2) Create a PKI certificate. You can create a self signed one using the provided New-Cert command
-3) Export the PFX and a public certificate from your generated certificate. 
+3) Export a public certificate from your generated certificate. 
 4) Upload the public cert to the account/integration you created in step 1.
 5) Using the information adobe gave you in step 1, call New-ClientInformation and provide it the necessary information. (APIKey, ClientSecret, etc)
-6) Load the PFX certificate. You can do this with the provided Load-PFXCert function.
+6) Load your private key from the certificate. You can do this with the provided Import-AdobeUMCert function.
 7) Call Get-AdobeAuthToken, to request an auth token from adobe, this validates further requests to adobe.
 8) Utilize the other functions, and your ClientInformation variable to make further queries against your Adobe users.
 
@@ -28,7 +28,8 @@ A complete example of the calls you should make after step 5 are below. This scr
 
 ```powershell
 #Load the Auth cert generated with New-Cert
-$SignatureCert = Import-PFXCert -Password "MyPassword" -CertPath "C:\Certs\AdobeAuthPrivate.pfx"
+#$SignatureCert = Import-AdobeUMCert -Password "MyPassword" -CertPath "C:\Certs\AdobeAuthPrivate.pfx" #from file or
+$SignatureCert = Import-AdobeUMCert -CertThumbprint "0000000000000000000000000000000000000000" -CertStore "LocalMachine" #From windows store
 
 #Client info from https://console.adobe.io/
 $ClientInformation = New-ClientInformation -APIKey "1234123412341234" -OrganizationID "1234123412341234@AdobeOrg" -ClientSecret "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx" `
@@ -60,7 +61,7 @@ $ScriptDir = split-path -parent $MyInvocation.MyCommand.Definition
 Import-Module "$ScriptDir\AdobeUMInterface.psm1"
 
 #Load cert for auth
-$SignatureCert = Import-PFXCert -Password "MyPassword" -CertPath "$ScriptDir\Private.pfx"
+$SignatureCert = Import-AdobeUMCert -CertThumbprint "0000000000000000000000000000000000000000" -CertStore "LocalMachine" #From windows store
 
 #Client info from https://console.adobe.io/
 $ClientInformation = New-ClientInformation -APIKey "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" -OrganizationID "xxxxxxxxxxxxxxxxxxxxxxxx@AdobeOrg" -ClientSecret "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
