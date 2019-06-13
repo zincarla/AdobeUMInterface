@@ -752,6 +752,9 @@ function Get-AdobeGroupAdmins
 .PARAMETER Domain
     Only required if using federated access.
 
+.PARAMETER UserID
+    Manually specify the user identity. Defaults to Email
+
 .PARAMETER AdditionalActions
     An array of additional actions to add to the request. (Like add to group)
 
@@ -760,7 +763,11 @@ function Get-AdobeGroupAdmins
     This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
   
 .EXAMPLE
-    New-CreateUserRequest -FirstName "John" -LastName "Doe" -Email "John.Doe@domain.com"
+    New-CreateUserRequest -FirstName "John" -LastName "Doe" -Email "John.Doe@domain.com" -IDType enterprise
+
+.EXAMPLE
+    New-CreateUserRequest -FirstName "John" -LastName "Doe" -UserID "John.Doe" -Email "John.Doe@domain.com" -IDType federated
+
 #>
 function New-CreateUserRequest
 {
@@ -769,6 +776,7 @@ function New-CreateUserRequest
         [Parameter(Mandatory=$true)][string]$FirstName, 
         [Parameter(Mandatory=$true)][string]$LastName, 
         [Parameter(Mandatory=$true)][string]$Email,
+        [string]$UserID=$Email,
         [ValidateScript({$_.ToLower() -eq "enterprise" -or $_.ToLower() -eq "federated" -or $_.ToLower() -eq "adobe"})]$IDType="enterprise",
         [string]$Domain,
         [string]$Country="US", 
@@ -799,7 +807,7 @@ function New-CreateUserRequest
     $AdditionalActions = @()+ $CreateAction + $AdditionalActions
 
     #Build and return the new request
-    $Request = New-Object -TypeName PSObject -Property @{user=$Email;do=@()+$AdditionalActions}
+    $Request = New-Object -TypeName PSObject -Property @{user=$UserID;do=@()+$AdditionalActions}
     #Adobe and federated require another field
     if ($IDType.ToLower() -eq "federated") {
         $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
