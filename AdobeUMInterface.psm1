@@ -750,7 +750,7 @@ function Get-AdobeGroupAdmins
     Specify the type of account to create. Valid values are enterprise,adobe,federated. Defaults to enterprise.
 
 .PARAMETER Domain
-    Only required if using federated access.
+    Only required if using federated access. If username is email, ommit this. Otherwise include for federated users.
 
 .PARAMETER UserID
     Manually specify the user identity. Defaults to Email
@@ -785,12 +785,6 @@ function New-CreateUserRequest
 
     $IDType = $IDType.ToLower()
 
-    #Validate Federated
-    if (($Domain -eq "" -or $Domain -eq $null) -and $IDType -eq "federated") {
-        Write-Error "Federated ID requires a domain to be specified."
-        return;
-    }
-
     $IDParameters = New-Object -TypeName PSObject -Property @{email=$Email;country=$Country;firstname=$FirstName;lastname=$LastName;option="ignoreIfAlreadyExists"}
     $CreateAction = $null;
     if ($IDType -eq "enterprise") {
@@ -809,7 +803,7 @@ function New-CreateUserRequest
     #Build and return the new request
     $Request = New-Object -TypeName PSObject -Property @{user=$UserID;do=@()+$AdditionalActions}
     #Adobe and federated require another field
-    if ($IDType.ToLower() -eq "federated") {
+    if ($IDType.ToLower() -eq "federated" -and $Domain -ne $null) {
         $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
     }
     if ($IDType.ToLower() -eq "adobe") {
@@ -825,6 +819,9 @@ function New-CreateUserRequest
 .PARAMETER UserName
     User's ID, usually e-mail
 
+.PARAMETER Domain
+    User's domain, only required for some types of federated id
+
 .PARAMETER AdditionalActions
     An array of additional actions to add to the request. (Like add to group)
 
@@ -839,7 +836,8 @@ function New-RemoveUserRequest
 {
     Param
     (
-        [Parameter(Mandatory=$true)][string]$UserName, 
+        [Parameter(Mandatory=$true)][string]$UserName,
+        [string]$Domain,
         $AdditionalActions=@()
     )
 
@@ -847,7 +845,12 @@ function New-RemoveUserRequest
 
     $AdditionalActions = @() + $RemoveAction + $AdditionalActions
 
-    return (New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$AdditionalActions})
+    #Build and return request
+    $Request = New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$AdditionalActions}
+    if ($Domain) {
+        $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
+    }
+    return $Request
 }
 
 <#
@@ -872,12 +875,18 @@ function New-RemoveUserFromGroupRequest
     Param
     (
         [Parameter(Mandatory=$true)][string]$UserName,
+        [string]$Domain,
         [Parameter(Mandatory=$true)]$GroupName
     )
 
     $RemoveMemberAction = New-GroupUserRemoveAction -Groups $GroupName
 
-    return (New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$RemoveMemberAction})
+    #Build and return request
+    $Request = New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$RemoveMemberAction}
+    if ($Domain) {
+        $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
+    }
+    return $Request
 }
 
 <#
