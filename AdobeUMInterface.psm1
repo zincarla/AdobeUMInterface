@@ -777,23 +777,31 @@ function New-CreateUserRequest
         [Parameter(Mandatory=$true)][string]$LastName, 
         [Parameter(Mandatory=$true)][string]$Email,
         [string]$UserID=$Email,
-        [ValidateScript({$_.ToLower() -eq "enterprise" -or $_.ToLower() -eq "federated" -or $_.ToLower() -eq "adobe"})]$IDType="enterprise",
-        [string]$Domain,
+        [ValidateSet(“enterprise”,”federated”, "adobe")]
+        $IDType="enterprise",
+        $Domain,
         [string]$Country="US", 
-        $AdditionalActions=@()
+        $AdditionalActions=@(),
+        [ValidateSet(“ignoreIfAlreadyExists”,”updateIfAlreadyExists”)] 
+        $OptionOnDuplicate="ignoreIfAlreadyExists"
     )
+    
+    #Properties required for all account types
+    $IDParameters = New-Object -TypeName PSObject -Property @{email=$Email;country=$Country;firstname=$FirstName;lastname=$LastName}
 
-    $IDType = $IDType.ToLower()
+    #Add option if it exists
+    if ($OptionOnDuplicate -ne $null) {
+        $IDParameters | Add-Member -MemberType NoteProperty -Name "option" -Value $OptionOnDuplicate
+    }
 
-    $IDParameters = New-Object -TypeName PSObject -Property @{email=$Email;country=$Country;firstname=$FirstName;lastname=$LastName;option="ignoreIfAlreadyExists"}
     $CreateAction = $null;
     if ($IDType -eq "enterprise") {
         $CreateAction = New-Object -TypeName PSObject -Property @{createEnterpriseID=$IDParameters}
     }
-    if ($IDType -eq "federated") {
+    elseif ($IDType -eq "federated") {
         $CreateAction = New-Object -TypeName PSObject -Property @{createFederatedID=$IDParameters}
     }
-    if ($IDType -eq "adobe") {
+    elseif ($IDType -eq "adobe") {
         $CreateAction = New-Object -TypeName PSObject -Property @{addAdobeID=$IDParameters}
     }
 
@@ -803,10 +811,10 @@ function New-CreateUserRequest
     #Build and return the new request
     $Request = New-Object -TypeName PSObject -Property @{user=$UserID;do=@()+$AdditionalActions}
     #Adobe and federated require another field
-    if ($IDType.ToLower() -eq "federated" -and $Domain -ne $null) {
+    if ($Domain -ne $null) {
         $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
     }
-    if ($IDType.ToLower() -eq "adobe") {
+    if ($IDType -eq "adobe") {
         $Request | Add-Member -MemberType NoteProperty -Name "useAdobeID" -Value "true"
     }
     return $Request;
