@@ -758,6 +758,9 @@ function Get-AdobeGroupAdmins
 .PARAMETER AdditionalActions
     An array of additional actions to add to the request. (Like add to group)
 
+.PARAMETER OptionOnDuplicate
+    Option to perform when a user already exists. Either ignoreIfAlreadyExists or updateIfAlreadyExists
+
 .NOTES
     See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
     This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
@@ -777,12 +780,12 @@ function New-CreateUserRequest
         [Parameter(Mandatory=$true)][string]$LastName, 
         [Parameter(Mandatory=$true)][string]$Email,
         [string]$UserID=$Email,
-        [ValidateSet(“enterprise”,”federated”, "adobe")]
+        [ValidateSet("enterprise","federated", "adobe")]
         $IDType="enterprise",
         $Domain,
         [string]$Country="US", 
         $AdditionalActions=@(),
-        [ValidateSet(“ignoreIfAlreadyExists”,”updateIfAlreadyExists”)] 
+        [ValidateSet("ignoreIfAlreadyExists","updateIfAlreadyExists")] 
         $OptionOnDuplicate="ignoreIfAlreadyExists"
     )
     
