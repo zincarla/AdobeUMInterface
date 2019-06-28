@@ -750,17 +750,27 @@ function Get-AdobeGroupAdmins
     Specify the type of account to create. Valid values are enterprise,adobe,federated. Defaults to enterprise.
 
 .PARAMETER Domain
-    Only required if using federated access.
+    Only required if using federated access. If username is email, ommit this. Otherwise include for federated users.
+
+.PARAMETER UserID
+    Manually specify the user identity. Defaults to Email
 
 .PARAMETER AdditionalActions
     An array of additional actions to add to the request. (Like add to group)
+
+.PARAMETER OptionOnDuplicate
+    Option to perform when a user already exists. Either ignoreIfAlreadyExists or updateIfAlreadyExists
 
 .NOTES
     See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
     This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
   
 .EXAMPLE
-    New-CreateUserRequest -FirstName "John" -LastName "Doe" -Email "John.Doe@domain.com"
+    New-CreateUserRequest -FirstName "John" -LastName "Doe" -Email "John.Doe@domain.com" -IDType enterprise
+
+.EXAMPLE
+    New-CreateUserRequest -FirstName "John" -LastName "Doe" -UserID "John.Doe" -Email "John.Doe@domain.com" -IDType federated
+
 #>
 function New-CreateUserRequest
 {
@@ -769,29 +779,32 @@ function New-CreateUserRequest
         [Parameter(Mandatory=$true)][string]$FirstName, 
         [Parameter(Mandatory=$true)][string]$LastName, 
         [Parameter(Mandatory=$true)][string]$Email,
-        [ValidateScript({$_.ToLower() -eq "enterprise" -or $_.ToLower() -eq "federated" -or $_.ToLower() -eq "adobe"})]$IDType="enterprise",
-        [string]$Domain,
+        [string]$UserID=$Email,
+        [ValidateSet("enterprise","federated", "adobe")]
+        $IDType="enterprise",
+        $Domain,
         [string]$Country="US", 
-        $AdditionalActions=@()
+        $AdditionalActions=@(),
+        [ValidateSet("ignoreIfAlreadyExists","updateIfAlreadyExists")] 
+        $OptionOnDuplicate="ignoreIfAlreadyExists"
     )
+    
+    #Properties required for all account types
+    $IDParameters = New-Object -TypeName PSObject -Property @{email=$Email;country=$Country;firstname=$FirstName;lastname=$LastName}
 
-    $IDType = $IDType.ToLower()
-
-    #Validate Federated
-    if (($Domain -eq "" -or $Domain -eq $null) -and $IDType -eq "federated") {
-        Write-Error "Federated ID requires a domain to be specified."
-        return;
+    #Add option if it exists
+    if ($OptionOnDuplicate -ne $null) {
+        $IDParameters | Add-Member -MemberType NoteProperty -Name "option" -Value $OptionOnDuplicate
     }
 
-    $IDParameters = New-Object -TypeName PSObject -Property @{email=$Email;country=$Country;firstname=$FirstName;lastname=$LastName;option="ignoreIfAlreadyExists"}
     $CreateAction = $null;
     if ($IDType -eq "enterprise") {
         $CreateAction = New-Object -TypeName PSObject -Property @{createEnterpriseID=$IDParameters}
     }
-    if ($IDType -eq "federated") {
+    elseif ($IDType -eq "federated") {
         $CreateAction = New-Object -TypeName PSObject -Property @{createFederatedID=$IDParameters}
     }
-    if ($IDType -eq "adobe") {
+    elseif ($IDType -eq "adobe") {
         $CreateAction = New-Object -TypeName PSObject -Property @{addAdobeID=$IDParameters}
     }
 
@@ -799,12 +812,12 @@ function New-CreateUserRequest
     $AdditionalActions = @()+ $CreateAction + $AdditionalActions
 
     #Build and return the new request
-    $Request = New-Object -TypeName PSObject -Property @{user=$Email;do=@()+$AdditionalActions}
+    $Request = New-Object -TypeName PSObject -Property @{user=$UserID;do=@()+$AdditionalActions}
     #Adobe and federated require another field
-    if ($IDType.ToLower() -eq "federated") {
+    if ($Domain -ne $null) {
         $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
     }
-    if ($IDType.ToLower() -eq "adobe") {
+    if ($IDType -eq "adobe") {
         $Request | Add-Member -MemberType NoteProperty -Name "useAdobeID" -Value "true"
     }
     return $Request;
@@ -816,6 +829,9 @@ function New-CreateUserRequest
 
 .PARAMETER UserName
     User's ID, usually e-mail
+
+.PARAMETER Domain
+    User's domain, only required for some types of federated id
 
 .PARAMETER AdditionalActions
     An array of additional actions to add to the request. (Like add to group)
@@ -831,7 +847,8 @@ function New-RemoveUserRequest
 {
     Param
     (
-        [Parameter(Mandatory=$true)][string]$UserName, 
+        [Parameter(Mandatory=$true)][string]$UserName,
+        [string]$Domain,
         $AdditionalActions=@()
     )
 
@@ -839,7 +856,12 @@ function New-RemoveUserRequest
 
     $AdditionalActions = @() + $RemoveAction + $AdditionalActions
 
-    return (New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$AdditionalActions})
+    #Build and return request
+    $Request = New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$AdditionalActions}
+    if ($Domain) {
+        $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
+    }
+    return $Request
 }
 
 <#
@@ -864,12 +886,18 @@ function New-RemoveUserFromGroupRequest
     Param
     (
         [Parameter(Mandatory=$true)][string]$UserName,
+        [string]$Domain,
         [Parameter(Mandatory=$true)]$GroupName
     )
 
     $RemoveMemberAction = New-GroupUserRemoveAction -Groups $GroupName
 
-    return (New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$RemoveMemberAction})
+    #Build and return request
+    $Request = New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$RemoveMemberAction}
+    if ($Domain) {
+        $Request | Add-Member -MemberType NoteProperty -Name "domain" -Value $Domain
+    }
+    return $Request
 }
 
 <#
