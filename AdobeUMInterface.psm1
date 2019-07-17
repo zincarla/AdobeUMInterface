@@ -510,7 +510,7 @@ function Get-AdobeUser
         [Parameter(Mandatory=$true)]$ClientInformation
     )
     #URI of the query endpoint
-    $URIPrefix = "$(UM_Server)organizations/$($ClientInformation.OrgID)/users/$UserID"
+    $URIPrefix = "$($UM_Server)organizations/$($ClientInformation.OrgID)/users/$UserID"
 
     #Request headers
     $Headers = @{Accept="application/json";
