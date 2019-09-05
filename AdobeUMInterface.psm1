@@ -1030,6 +1030,7 @@ function Send-UserManagementRequest
     (
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation,
+        [ValidateScript({$_ -ne $null})]
         $Requests
     )
     #Ensure is array
