@@ -31,11 +31,16 @@ function New-Cert
         [int]$ExpiryYears=6,
         [switch]$Quiet
     )
-    $Cert=New-SelfSignedCertificate -CertStoreLocation cert:\currentuser\my -DnsName $DNSName -KeyFriendlyName $DNSName -NotAfter ([DateTime]::Now).AddYears($ExpiryYears) -HashAlgorithm "SHA512" -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider"
-    if (-not $Quiet) {
-        Write-Host ("Your certificate has been created. You may find it in your certificate store. (Run MMC.exe as "+$env:USERNAME+"@"+$env:USERDNSDOMAIN+")")
-        Write-Host "Add the certificate snap-in and you should find the new cert at 'Certificates - Current User\Personal\Certificates\$DNSName'"
-        Write-Host "Right-Click the cert to export it with and without its private key"
+    $CmdLetParam = (Get-Help -Name New-SelfSignedCertificate -Full).parameters.parameter | Where-Object {$_.name -eq "Provider"}
+    if ($CmdLetParam) {
+        $Cert=New-SelfSignedCertificate -CertStoreLocation cert:\currentuser\my -DnsName $DNSName -KeyFriendlyName $DNSName -NotAfter ([DateTime]::Now).AddYears($ExpiryYears) -HashAlgorithm "SHA512" -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider"
+        if (-not $Quiet) {
+            Write-Host ("Your certificate has been created. You may find it in your certificate store. (Run MMC.exe as "+$env:USERNAME+"@"+$env:USERDNSDOMAIN+")")
+            Write-Host "Add the certificate snap-in and you should find the new cert at 'Certificates - Current User\Personal\Certificates\$DNSName'"
+            Write-Host "Right-Click the cert to export it with and without its private key"
+        }
+    } else {
+        Write-Error "Your version of PowerShell/Windows does not support advanced features for the New-SelfSignedCertificate cmdlet. Please manually generate a certificate preferably using the `"Microsoft Enhanced RSA and AES Cryptographic Provider`" CSP."
     }
 }
 
@@ -998,7 +1003,8 @@ function New-RemoveFromGroupRequest
         [Parameter(Mandatory=$true)][string]$User, 
         [Parameter(Mandatory=$true)]$Groups
     )
-    $GroupRemoveAction = New-GroupRemoveAction -GroupNames $Groups
+    
+    $GroupRemoveAction = New-GroupUserRemoveAction -GroupNames $Groups
     return return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupRemoveAction})
 }
 
