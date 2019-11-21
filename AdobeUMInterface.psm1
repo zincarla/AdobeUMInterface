@@ -1030,12 +1030,35 @@ function Send-UserManagementRequest
     (
         [ValidateScript({$_.Token -ne $null})]
         [Parameter(Mandatory=$true)]$ClientInformation,
-        [ValidateScript({$_ -ne $null})]
         $Requests
     )
     #Ensure is array
     $Request = @()+$Requests
-    $Request = ConvertTo-Json -InputObject $Request -Depth 10 -Compress
+
+    #region Split request into 10 command chunks
+    #Larger queries kept returning invalid JSON format errors from adobe
+    $QueChunks = 10
+    $RequestQue = @()
+    $Count =0
+    $NextQueEntry = @()
+    for ($I = 0; $I -lt $Request.Length; $I++) {
+        $NextQueEntry +=$Request[$I]
+        $Count++;
+        if ($Count -ge $QueChunks) {
+            $RequestQue += ,$NextQueEntry
+            $NextQueEntry = @()
+            $Count=0
+        }
+    }
+    #Capture last chunk if it was not an exact multiple of 100
+    if ($NextQueEntry.Length -gt 0) {
+        $RequestQue += ,$NextQueEntry
+        $NextQueEntry = @()
+        $Count=0
+    }
+    #endregion
+
+    #Prepare Headers
     #https://adobe-apiplatform.github.io/umapi-documentation/en/api/ActionsRef.html
     $URI = "https://usermanagement.adobe.io/v2/usermanagement/action/$($ClientInformation.OrgID)"
     $Headers = @{Accept="application/json";
@@ -1043,7 +1066,27 @@ function Send-UserManagementRequest
             "x-api-key"=$ClientInformation.APIKey;
             Authorization="Bearer $($ClientInformation.Token.access_token)"}
 
-    return (Invoke-RestMethod -Method Post -Uri $URI -Body $Request -Header $Headers)
+    #Loop through the request que and send off the requests
+    $ResultArray=@()
+    Write-Progress -Activity "Sending requests" -Status "(0/$($RequestQue.Length))" -PercentComplete 0
+    for ($I=0; $I -lt $RequestQue.Length; $I++) {
+        $Request = ConvertTo-Json -InputObject $RequestQue[$I] -Depth 10 -Compress
+
+        $Result = Invoke-RestMethod -Method Post -Uri $URI -Body $Request -Header $Headers
+        $ResultArray+=$Result
+        if ($Result.error_code -ne $null -and $Result.error_code.ToString().StartsWith("429")) {
+            $I--; #Decrement to retry current request after timeout
+            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+            #I never got blocked testing this, not sure if this is needed, but just in case it is
+            Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 1 minute and continue."
+            Start-Sleep -Seconds 60
+        } elseif ($Result.error_code -ne $null) {
+            Write-Warning -Message "Error occured in request, $($Result.error_code)"
+        }
+        Write-Progress -Activity "Sending requests" -Status "($I/$($RequestQue.Length))" -PercentComplete (100*$I/$RequestQue.Length)
+    }
+    Write-Progress -Activity "Sending requests" -Status "Done" -PercentComplete 100 -Completed
+    return $ResultArray
 }
 
 <#
