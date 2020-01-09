@@ -461,12 +461,19 @@ function Get-AdobeUsers
     #Query, looping through each page, until we have all users.
     while($true)
     {
-        $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix+$Page.ToString()) -Header $Headers
-        if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
-            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
-            #I never got blocked testing this, not sure if this is needed, but just in case it does
-            Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 1 minute and continue."
-            Start-Sleep -Seconds 60
+        try {
+            $QueryResponse = Invoke-RestMethod -Method Get -Uri ($URIPrefix+$Page.ToString()) -Header $Headers
+        } catch {
+            if ($_.Exception.Response.StatusCode.value__ -eq '429') {
+            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/ActionsRef.html#actionThrottle
+            Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 30 seconds and continue."
+            Start-Sleep -Seconds 30
+            $Paused = $true
+            }
+        }
+        if ($Paused -eq $true) {
+            #reset paused flag so loop can try getting page again
+            $Paused = $false
         }
         else {
             #Currently not required, but other queries will just keep dumping the same users as you loop though pages
