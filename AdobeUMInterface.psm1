@@ -1096,7 +1096,6 @@ function Send-UserManagementRequest
     return $ResultArray
 }
 
-Function New-SyncADGroupRequest {
 <#
     .SYNOPSIS
         Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
@@ -1128,7 +1127,7 @@ Function New-SyncADGroupRequest {
     .NOTES
         If you accidently remove an admin account using DeleteRemovedMembers, you can still recover using the API.
 #>
-    
+Function New-SyncADGroupRequest {
     Param
     (
         [Parameter(Mandatory = $true)]
