@@ -1097,99 +1097,124 @@ function Send-UserManagementRequest
 }
 
 <#
-.SYNOPSIS
-    Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
-
-.PARAMETER ADGroupName
-    Active Directory Group Identifier (Name or DN). The source group to mirror to adobe
-
-.PARAMETER AdobeGroupName
-    Adobe group Name
-
-.PARAMETER ClientInformation
-    Service account information including token
-
-.PARAMETER RecurseADGroupMembers
-    If specified, will pull all users in all groups in and under the specified ADGroup
-
-.PARAMETER DeleteRemovedMembers
-    Removes users from the Adobe Console if they have been removed from the group
-
-.NOTES
-    If you accidently remove an admin account using DeleteRemovedMembers, you can still recover using the API.
-  
-.EXAMPLE
-    New-SyncADGroupRequest -ADGroupName "SG-My-Adobe-Users" -AdobeGroupName "All Apps Users" -ClientInformation $MyClientInfo
+    .SYNOPSIS
+        Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
+    
+    .DESCRIPTION
+        A detailed description of the New-SyncADGroupRequest function.
+    
+    .PARAMETER ADGroupName
+        Active Directory Group Identifier (Name or DN). The source group to mirror to adobe
+    
+    .PARAMETER AdobeGroupName
+        Adobe group Name
+    
+    .PARAMETER RecurseADGroupMembers
+        If specified, will pull all users in all groups in and under the specified ADGroup
+    
+    .PARAMETER DeleteRemovedMembers
+        Removes users from the Adobe Console if they have been removed from the group
+    
+    .PARAMETER CreateAsFederated
+        If a new user needs to be created in Adobe, this switch creates them with a federatedID instead of an EnterpriseID
+    
+    .PARAMETER ClientInformation
+        Service account information including token
+    
+    .EXAMPLE
+        New-SyncADGroupRequest -ADGroupName "SG-My-Adobe-Users" -AdobeGroupName "All Apps Users" -ClientInformation $MyClientInfo
+    
+    .NOTES
+        If you accidently remove an admin account using DeleteRemovedMembers, you can still recover using the API.
 #>
-function New-SyncADGroupRequest
-{
+Function New-SyncADGroupRequest {
     Param
     (
-        [Parameter(Mandatory=$true)][string]$ADGroupName, 
-        [Parameter(Mandatory=$true)][string]$AdobeGroupName, 
-        [switch]$RecurseADGroupMembers,
-        [switch]$DeleteRemovedMembers,
-        [ValidateScript({$_.Token -ne $null})]
-        [Parameter(Mandatory=$true)]$ClientInformation
+        [Parameter(Mandatory = $true)]
+        [string]
+        $ADGroupName,
+        [Parameter(Mandatory = $true)]
+        [string]
+        $AdobeGroupName,
+        [switch]
+        $RecurseADGroupMembers,
+        [switch]
+        $DeleteRemovedMembers,
+        [switch]
+        $CreateAsFederated,
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({
+                $_.Token -ne $null
+            })]
+        $ClientInformation
     )
+    
     #Grab a list of users in the Active Directory group
-    $ADGroupMembers = Get-ADGroupMember -Identity $ADGroupName -Recursive:$RecurseADGroupMembers | Where-Object -FilterScript {$_.ObjectClass -eq "user"}
+    $ADGroupMembers = (Get-ADGroupMember -Identity $ADGroupName -Recursive:$RecurseADGroupMembers).Where{
+        $_.ObjectClass -eq "user" -or $_.ObjectClass -eq 'inetOrgPerson'
+    }
     #Get extended property data on all users. (So we can get e-mail)
-    $ADUsers = @()
-    foreach ($ADGroupMember in $ADGroupMembers)
-    {
-        $ADUsers += Get-ADUser -Identity $ADGroupMember.distinguishedName -Properties mail
+    $ADUsers = [System.Collections.Generic.List[PSObject]]::New()
+    ForEach ($ADGroupMember In $ADGroupMembers) {
+        $ADUsers.Add($(Get-ADUser -Identity $ADGroupMember.distinguishedName -Properties mail))
     }
     #Grab a list of users from the adobe group
-    $Members = @()
+    $Members = [System.Collections.Generic.List[String]]::New()
     $ADBMembers = Get-AdobeGroupMembers -ClientInformation $ClientInformation -GroupName $AdobeGroupName
-    if ($ADBMembers -ne $null) {
-        $Members += $ADBMembers.email | ForEach-Object {$_.ToLower()}
+    If ($ADBMembers -ne $null) {
+        If ($ADBMembers.email.count -gt 1) {
+            $ADBMembers.email.foreach{
+                $Members.Add($_.ToLower())
+            }
+        }
+        Else {
+            $Members.Add($ADBMembers.email.ToLower())
+        }
     }
-
+    
     #Grab all Adobe Users 
     $AdobeUsers = Get-AdobeUsers -ClientInformation $ClientInformation
-
+    
     #Results
-    $Request = @()
-
+    $Request = [System.Collections.Generic.List[PSObject]]::New()
+    
     #Find missing users, and create requests to add them to adobe
-    foreach ($ADUser in $ADUsers)
-    {
+    ForEach ($ADUser In $ADUsers) {
         #If adobe group does not contain ad user
-        if ($Members.Length -le 0 -or -not $Members.Contains($ADUser.mail.ToLower()))
-        {
+        If ($Members.Count -le 0 -or -not $Members.Contains($ADUser.mail.ToLower())) {
             #Check if user already exists
-            if ($AdobeUsers.email -contains $ADUser.mail.ToLower()) 
-            {
-                $Request += New-AddToGroupRequest -User $ADUser.mail.ToLower() -Groups $AdobeGroupName
+            If ($AdobeUsers.email -contains $ADUser.mail.ToLower()) {
+                $Request.Add($(New-AddToGroupRequest -User $ADUser.mail.ToLower() -Groups $AdobeGroupName))
             }
-            else 
-            {
+            Else {
                 $AddToGroup = New-GroupUserAddAction -Groups $AdobeGroupName
                 #Need to add
-                $Request += New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup
+                If ($CreateAsFederated) {
+                    $Request.Add($(New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup -IDType federated))
+                }
+                Else {
+                    $Request.Add($(New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup))
+                }
             }
         }
     }
     #Find excess members and create requests to remove them
-    foreach ($Member in $Members)
-    {
-        if (-not (@()+($ADUsers.mail|ForEach-Object {$_.ToLower()})).Contains($Member))
-        {
-            if ($DeleteRemovedMembers) {
+    ForEach ($Member In $Members) {
+        If (-not (@() + ($ADUsers.mail.ForEach.{
+                        $_.ToLower()
+                    })).Contains($Member)) {
+            If ($DeleteRemovedMembers) {
                 #Remove user from Adobe Console entirely
-                $Request += New-RemoveUserRequest -UserName $Member
+                $Request.Add($(New-RemoveUserRequest -UserName $Member))
             }
-            else
-            {
+            Else {
                 #Need to remove
-                $Request += New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupName
+                $Request.Add($(New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupName))
             }
         }
     }
     #return our list of requests
-    return $Request
+    Return $Request
 }
 
 <#
