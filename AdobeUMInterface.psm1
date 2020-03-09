@@ -1200,7 +1200,7 @@ Function New-SyncADGroupRequest {
     }
     #Find excess members and create requests to remove them
     ForEach ($Member In $Members) {
-        If (-not (@() + ($ADUsers.mail.ForEach.{
+        If (-not (@() + ($ADUsers.mail.ForEach{
                         $_.ToLower()
                     })).Contains($Member)) {
             If ($DeleteRemovedMembers) {
