@@ -403,7 +403,14 @@ function Get-AdobeAuthToken
     #Join them together. as base64 strings, with a "." between them
     $JWT = (ConvertTo-Base64URL -Item ([System.Text.ASCIIEncoding]::ASCII.GetBytes($Header)))+"."+$JWT
     #Sign the data
-    $JWTSig = ConvertTo-Base64URL -Item ($SignatureCert.PrivateKey.SignData([System.Text.ASCIIEncoding]::UTF8.GetBytes($JWT), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1))
+    try {
+        $JWTSig = ConvertTo-Base64URL -Item ($SignatureCert.PrivateKey.SignData([System.Text.ASCIIEncoding]::UTF8.GetBytes($JWT), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)) -ErrorAction Stop
+    } catch [CryptographicException] {
+        Write-Warning "Could not sign the data. Please ensure your certificate was imported using the 'Microsoft Enhanced RSA and AES Cryptographic Provider' CSP. See https://github.com/zincarla/AdobeUMInterface/issues/10 for more information."
+        throw $_
+    } catch {
+        throw $_
+    }
     #Append the signature. This is now a complete JWT
     $JWT = $JWT+"."+$JWTSig
 
@@ -1150,7 +1157,9 @@ Function New-SyncADGroupRequest {
     )
     
     #Grab a list of users in the Active Directory group
-    $ADGroupMembers = (Get-ADGroupMember -Identity $ADGroupName -Recursive:$RecurseADGroupMembers).Where{
+    $ADGroupMembers = Get-ADGroupMember -Identity $ADGroupName -Recursive:$RecurseADGroupMembers -ErrorAction Stop
+    
+    $ADGroupMembers = $ADGroupMembers.Where{
         $_.ObjectClass -eq "user" -or $_.ObjectClass -eq 'inetOrgPerson'
     }
     #Get extended property data on all users. (So we can get e-mail)
