@@ -538,20 +538,26 @@ function Get-AdobeUser
              Authorization="Bearer $($ClientInformation.Token.access_token)"}
     #Query
     while($true) {
-        $QueryResponse = Invoke-RestMethod -Method Get -Uri $URIPrefix -Header $Headers
-        if ($QueryResponse.error_code -ne $null -and $QueryResponse.error_code.ToString().StartsWith("429")) {
-            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
-            #I never got blocked testing this, not sure if this is needed, but just in case it does
-            Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 1 minute and continue."
-            Start-Sleep -Seconds 60
-        }
-        else
-        {
+        try {
+            $QueryResponse = Invoke-RestMethod -Method Get -Uri $URIPrefix -Header $Headers
             if ($QueryResponse.result.StartsWith("error") ) {
                 Write-Error $QueryResponse.result;
                 return $null
             }
             return $QueryResponse.user
+        } catch {
+            if ($_.Exception.Response.StatusCode -eq 429) {
+                #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+                Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep the requested $($_.Exception.Response.Headers["Retry-After"]) seconds before retrying..."
+                Start-Sleep -Seconds $_.Exception.Response.Headers["Retry-After"]
+                Write-Warning "Continuing with query."
+            } elseif ($_.Exception.Response.StatusCode -eq 404) {
+                # User not found
+                return $null
+            } else {
+                Write-Error $_.Exception;
+                return $null
+            }
         }
     }
 }
@@ -1086,16 +1092,19 @@ function Send-UserManagementRequest
     for ($I=0; $I -lt $RequestQue.Length; $I++) {
         $Request = ConvertTo-Json -InputObject $RequestQue[$I] -Depth 10 -Compress
 
-        $Result = Invoke-RestMethod -Method Post -Uri $URI -Body $Request -Header $Headers
-        $ResultArray+=$Result
-        if ($Result.error_code -ne $null -and $Result.error_code.ToString().StartsWith("429")) {
-            $I--; #Decrement to retry current request after timeout
-            #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
-            #I never got blocked testing this, not sure if this is needed, but just in case it is
-            Write-Warning "Adobe is throttling our user query. This cmdlet will now sleep 1 minute and continue."
-            Start-Sleep -Seconds 60
-        } elseif ($Result.error_code -ne $null) {
-            Write-Warning -Message "Error occured in request, $($Result.error_code)"
+        try {
+            $Result = Invoke-RestMethod -Method Post -Uri $URI -Body $Request -Header $Headers
+            $ResultArray+=$Result
+        } catch {
+            if ($_.Exception.Response.StatusCode -eq 429) {
+                $I--; #Decrement to retry current request after timeout
+                #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+                Write-Warning "Adobe is throttling our user change request. This cmdlet will now sleep the requested $($_.Exception.Response.Headers["Retry-After"]) seconds before retrying..."
+                Start-Sleep -Seconds $_.Exception.Response.Headers["Retry-After"]
+                Write-Warning "Continuing with request."
+            } else {
+                Write-Warning -Message "Error occured in request, $($_.Exception)"    
+            }
         }
         Write-Progress -Activity "Sending requests" -Status "($I/$($RequestQue.Length))" -PercentComplete (100*$I/$RequestQue.Length)
     }
