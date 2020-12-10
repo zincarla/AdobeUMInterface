@@ -896,7 +896,7 @@ function New-RemoveUserRequest
 .PARAMETER UserName
     User's ID, usually e-mail
 
-.PARAMETER GroupName
+.PARAMETER Groups
     Name of the group to remove the user from
 
 .NOTES
@@ -904,18 +904,20 @@ function New-RemoveUserRequest
     This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
   
 .EXAMPLE
-    New-RemoveUserFromGroupRequest -UserName "john.doe@domain.com" -GroupName "My User Group"
+    New-RemoveUserFromGroupRequest -UserName "john.doe@domain.com" -Groups "My User Group"
 #>
+
 function New-RemoveUserFromGroupRequest
 {
+[Alias("New-RemoveFromGroupRequest")]
     Param
     (
-        [Parameter(Mandatory=$true)][string]$UserName,
+        [Alias("User")][Parameter(Mandatory=$true)][string]$UserName,
         [string]$Domain,
-        [Parameter(Mandatory=$true)]$GroupName
+        [Alias("GroupName")][Parameter(Mandatory=$true)]$Groups
     )
 
-    $RemoveMemberAction = New-GroupUserRemoveAction -Groups $GroupName
+    $RemoveMemberAction = New-GroupUserRemoveAction -Groups $Groups
 
     #Build and return request
     $Request = New-Object -TypeName PSObject -Property @{user=$UserName;do=@()+$RemoveMemberAction}
@@ -993,6 +995,7 @@ function New-GroupUserRemoveAction
 #>
 function New-AddToGroupRequest
 {
+[Alias("New-AddUserToGroupRequest")]
     Param
     (
         [Parameter(Mandatory=$true)][string]$User, 
@@ -1000,32 +1003,6 @@ function New-AddToGroupRequest
     )
     $GroupAddAction = New-GroupUserAddAction -Groups $Groups
     return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupAddAction})
-}
-
-<#
-.SYNOPSIS
-    Creates a "Remove user from group" request. This will need to be json'd and sent to adobe
-
-.PARAMETER Groups
-    An array of groups that something should be removed from
-
-.NOTES
-    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
-    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
-  
-.EXAMPLE
-    New-RemoveFromGroupRequest -Groups "My User Group" -User "John.Doe@domain.com"
-#>
-function New-RemoveFromGroupRequest
-{
-    Param
-    (
-        [Parameter(Mandatory=$true)][string]$User, 
-        [Parameter(Mandatory=$true)]$Groups
-    )
-    
-    $GroupRemoveAction = New-GroupUserRemoveAction -GroupNames $Groups
-    return return (New-Object -TypeName PSObject -Property @{user=$User;do=@()+$GroupRemoveAction})
 }
 
 <#
@@ -1227,7 +1204,7 @@ Function New-SyncADGroupRequest {
             }
             Else {
                 #Need to remove
-                $Request.Add($(New-RemoveUserFromGroupRequest -UserName $Member -GroupName $AdobeGroupName))
+                $Request.Add($(New-RemoveUserFromGroupRequest -UserName $Member -Groups $AdobeGroupName))
             }
         }
     }
