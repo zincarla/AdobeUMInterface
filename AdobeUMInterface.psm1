@@ -1,4 +1,6 @@
 #region Helper functions (General use functions)
+#These functions are general use functions to make life easier. Primarily, they make converting to/from Java objects easier, and they assist in setting up the initial connection with Adobe
+
 <#
 .SYNOPSIS
     Creates a new self-signed certificate for use with Adobe.
@@ -300,6 +302,7 @@ function Expand-JWTInformation
 #endregion
 
 #region Connection setup functions
+#These functions are directly used in logging into Adobe with JWT.
 
 <#
 .SYNOPSIS
@@ -420,6 +423,9 @@ function Get-AdobeAuthToken
 }
 
 #endregion
+
+#region Read Functions
+#These are functions that can be called to query data from Adobe. These do -not- need to be sent with Send-UserManagementRequest
 
 <#
 .SYNOPSIS
@@ -753,7 +759,10 @@ function Get-AdobeGroupAdmins
     }
     return $Results
 }
+#endregion
 
+#region Request Functions
+#These functions create entire request objects. This allows you to create a user, without having to build the entire JSON object from scratch
 
 <#
 .SYNOPSIS
@@ -927,57 +936,6 @@ function New-RemoveUserFromGroupRequest
     return $Request
 }
 
-<#
-.SYNOPSIS
-    Creates a "Add to group" action. Actions fall under requests. This will have to be added to a request, then json'd and submitted to adobe's API
-
-.PARAMETER Groups
-    An array of groups that something should be added to
-
-.NOTES
-    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
-    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
-  
-.EXAMPLE
-    New-GroupUserAddAction -Groups "My User Group"
-#>
-function New-GroupUserAddAction
-{
-    Param
-    (
-        [Parameter(Mandatory=$true)]$Groups
-    )
-
-    $Params = New-Object -TypeName PSObject -Property @{group=@()+$Groups}
-
-    return (New-Object -TypeName PSObject -Property @{add=$Params})
-}
-
-<#
-.SYNOPSIS
-    Creates a "Remove from group" action. Actions fall under requests. This will have to be added to a request, then json'd and submitted to adobe's API
-
-.PARAMETER Groups
-    An array of groups that something should be removed from
-
-.NOTES
-    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
-    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
-  
-.EXAMPLE
-    New-GroupUserRemoveAction -Groups "My User Group"
-#>
-function New-GroupUserRemoveAction
-{
-    Param
-    (
-        [Parameter(Mandatory=$true)]$Groups
-    )
-
-    $Params = New-Object -TypeName PSObject -Property @{group=@()+$Groups}
-
-    return (New-Object -TypeName PSObject -Property @{remove=$Params})
-}
 
 <#
 .SYNOPSIS
@@ -1007,118 +965,34 @@ function New-AddToGroupRequest
 
 <#
 .SYNOPSIS
-    Sends a request, or array of requests, to adobe's user management endpoint
-
+    Creates an array of requests that effectively mirrors an Adobe group to an AD group
+    
+.DESCRIPTION
+    Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
+    
+.PARAMETER ADGroupName
+    Active Directory Group Identifier (Name or DN). The source group to mirror to adobe
+    
+.PARAMETER AdobeGroupName
+    Adobe group Name
+    
+.PARAMETER RecurseADGroupMembers
+    If specified, will pull all users in all groups in and under the specified ADGroup
+    
+.PARAMETER DeleteRemovedMembers
+    Removes users from the Adobe Console if they have been removed from the group
+    
+.PARAMETER CreateAsFederated
+    If a new user needs to be created in Adobe, this switch creates them with a federatedID instead of an EnterpriseID
+    
 .PARAMETER ClientInformation
-    ClientInformation object containing service account info and token
-
-.PARAMETER Requests
-    An array of requests to send to adobe
-
-.NOTES
-    See the New-*Request
-  
+    Service account information including token
+    
 .EXAMPLE
-    Send-UserManagementRequest -ClientInformation $MyClientInfo -Requests (New-CreateUserRequest -FirstName "John" -LastName "Doe" -Email "john.doe@domain.com" -Country="US")
-#>
-function Send-UserManagementRequest
-{
-    Param
-    (
-        [ValidateScript({$_.Token -ne $null})]
-        [Parameter(Mandatory=$true)]$ClientInformation,
-        $Requests
-    )
-    #Ensure is array
-    $Request = @()+$Requests
-
-    #region Split request into 10 command chunks
-    #Larger queries kept returning invalid JSON format errors from adobe
-    $QueChunks = 10
-    $RequestQue = @()
-    $Count =0
-    $NextQueEntry = @()
-    for ($I = 0; $I -lt $Request.Length; $I++) {
-        $NextQueEntry +=$Request[$I]
-        $Count++;
-        if ($Count -ge $QueChunks) {
-            $RequestQue += ,$NextQueEntry
-            $NextQueEntry = @()
-            $Count=0
-        }
-    }
-    #Capture last chunk if it was not an exact multiple of 100
-    if ($NextQueEntry.Length -gt 0) {
-        $RequestQue += ,$NextQueEntry
-        $NextQueEntry = @()
-        $Count=0
-    }
-    #endregion
-
-    #Prepare Headers
-    #https://adobe-apiplatform.github.io/umapi-documentation/en/api/ActionsRef.html
-    $URI = "https://usermanagement.adobe.io/v2/usermanagement/action/$($ClientInformation.OrgID)"
-    $Headers = @{Accept="application/json";
-            "Content-Type"="application/json";
-            "x-api-key"=$ClientInformation.APIKey;
-            Authorization="Bearer $($ClientInformation.Token.access_token)"}
-
-    #Loop through the request que and send off the requests
-    $ResultArray=@()
-    Write-Progress -Activity "Sending requests" -Status "(0/$($RequestQue.Length))" -PercentComplete 0
-    for ($I=0; $I -lt $RequestQue.Length; $I++) {
-        $Request = ConvertTo-Json -InputObject $RequestQue[$I] -Depth 10 -Compress
-
-        try {
-            $Result = Invoke-RestMethod -Method Post -Uri $URI -Body $Request -Header $Headers
-            $ResultArray+=$Result
-        } catch {
-            if ($_.Exception.Response.StatusCode -eq 429) {
-                $I--; #Decrement to retry current request after timeout
-                #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
-                Write-Warning "Adobe is throttling our user change request. This cmdlet will now sleep the requested $($_.Exception.Response.Headers["Retry-After"]) seconds before retrying..."
-                Start-Sleep -Seconds $_.Exception.Response.Headers["Retry-After"]
-                Write-Warning "Continuing with request."
-            } else {
-                Write-Warning -Message "Error occured in request, $($_.Exception)"    
-            }
-        }
-        Write-Progress -Activity "Sending requests" -Status "($I/$($RequestQue.Length))" -PercentComplete (100*$I/$RequestQue.Length)
-    }
-    Write-Progress -Activity "Sending requests" -Status "Done" -PercentComplete 100 -Completed
-    return $ResultArray
-}
-
-<#
-    .SYNOPSIS
-        Creates an array of requests that, when considered together, ensures an Adobe group will mirror an AD group
+    New-SyncADGroupRequest -ADGroupName "SG-My-Adobe-Users" -AdobeGroupName "All Apps Users" -ClientInformation $MyClientInfo
     
-    .DESCRIPTION
-        A detailed description of the New-SyncADGroupRequest function.
-    
-    .PARAMETER ADGroupName
-        Active Directory Group Identifier (Name or DN). The source group to mirror to adobe
-    
-    .PARAMETER AdobeGroupName
-        Adobe group Name
-    
-    .PARAMETER RecurseADGroupMembers
-        If specified, will pull all users in all groups in and under the specified ADGroup
-    
-    .PARAMETER DeleteRemovedMembers
-        Removes users from the Adobe Console if they have been removed from the group
-    
-    .PARAMETER CreateAsFederated
-        If a new user needs to be created in Adobe, this switch creates them with a federatedID instead of an EnterpriseID
-    
-    .PARAMETER ClientInformation
-        Service account information including token
-    
-    .EXAMPLE
-        New-SyncADGroupRequest -ADGroupName "SG-My-Adobe-Users" -AdobeGroupName "All Apps Users" -ClientInformation $MyClientInfo
-    
-    .NOTES
-        If you accidently remove an admin account using DeleteRemovedMembers, you can still recover using the API.
+.NOTES
+    If you accidently remove an admin account using DeleteRemovedMembers, you can still recover using the API.
 #>
 Function New-SyncADGroupRequest {
     Param
@@ -1241,6 +1115,151 @@ function New-RemoveUnusedAbobeUsersRequest
         }
     }
     return $Requests
+}
+
+#endregion
+
+#region Action Functions
+#Most Adobe requests are made of an object, and an array of actions to be performed in relation to the object. These functions create those actions in an easily JSON-able format. These actions are useless by themselves, and are used by the Create-*Request functions, or can be attached to those functions.
+
+<#
+.SYNOPSIS
+    Creates a "Add to group" action. Actions fall under requests. This will have to be added to a request, then json'd and submitted to adobe's API
+
+.PARAMETER Groups
+    An array of groups that something should be added to
+
+.NOTES
+    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
+    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
+  
+.EXAMPLE
+    New-GroupUserAddAction -Groups "My User Group"
+#>
+function New-GroupUserAddAction
+{
+    Param
+    (
+        [Parameter(Mandatory=$true)]$Groups
+    )
+
+    $Params = New-Object -TypeName PSObject -Property @{group=@()+$Groups}
+
+    return (New-Object -TypeName PSObject -Property @{add=$Params})
+}
+
+<#
+.SYNOPSIS
+    Creates a "Remove from group" action. Actions fall under requests. This will have to be added to a request, then json'd and submitted to adobe's API
+
+.PARAMETER Groups
+    An array of groups that something should be removed from
+
+.NOTES
+    See https://adobe-apiplatform.github.io/umapi-documentation/en/RefOverview.html
+    This should be posted to https://usermanagement.adobe.io/v2/usermanagement/action/{myOrgID}
+  
+.EXAMPLE
+    New-GroupUserRemoveAction -Groups "My User Group"
+#>
+function New-GroupUserRemoveAction
+{
+    Param
+    (
+        [Parameter(Mandatory=$true)]$Groups
+    )
+
+    $Params = New-Object -TypeName PSObject -Property @{group=@()+$Groups}
+
+    return (New-Object -TypeName PSObject -Property @{remove=$Params})
+}
+#endregion
+
+<#
+.SYNOPSIS
+    Sends a request, or an array of requests, to adobe's user management endpoint
+
+.DESCRIPTION
+    This function sends requests as generated but the Create-*Request functions to Adobe for action.
+
+.PARAMETER ClientInformation
+    ClientInformation object containing service account info and token
+
+.PARAMETER Requests
+    An array of requests to send to adobe
+
+.NOTES
+    See the New-*Request
+  
+.EXAMPLE
+    Send-UserManagementRequest -ClientInformation $MyClientInfo -Requests (New-CreateUserRequest -FirstName "John" -LastName "Doe" -Email "john.doe@domain.com" -Country="US")
+#>
+function Send-UserManagementRequest
+{
+    Param
+    (
+        [ValidateScript({$_.Token -ne $null})]
+        [Parameter(Mandatory=$true)]$ClientInformation,
+        $Requests
+    )
+    #Ensure is array
+    $Request = @()+$Requests
+
+    #region Split request into 10 command chunks
+    #Larger queries kept returning invalid JSON format errors from adobe
+    $QueChunks = 10
+    $RequestQue = @()
+    $Count =0
+    $NextQueEntry = @()
+    for ($I = 0; $I -lt $Request.Length; $I++) {
+        $NextQueEntry +=$Request[$I]
+        $Count++;
+        if ($Count -ge $QueChunks) {
+            $RequestQue += ,$NextQueEntry
+            $NextQueEntry = @()
+            $Count=0
+        }
+    }
+    #Capture last chunk if it was not an exact multiple of 100
+    if ($NextQueEntry.Length -gt 0) {
+        $RequestQue += ,$NextQueEntry
+        $NextQueEntry = @()
+        $Count=0
+    }
+    #endregion
+
+    #Prepare Headers
+    #https://adobe-apiplatform.github.io/umapi-documentation/en/api/ActionsRef.html
+    $URI = "https://usermanagement.adobe.io/v2/usermanagement/action/$($ClientInformation.OrgID)"
+    $Headers = @{Accept="application/json";
+            "Content-Type"="application/json";
+            "x-api-key"=$ClientInformation.APIKey;
+            Authorization="Bearer $($ClientInformation.Token.access_token)"}
+
+    #Loop through the request que and send off the requests
+    $ResultArray=@()
+    Write-Progress -Activity "Sending requests" -Status "(0/$($RequestQue.Length))" -PercentComplete 0
+    for ($I=0; $I -lt $RequestQue.Length; $I++) {
+        $Request = ConvertTo-Json -InputObject $RequestQue[$I] -Depth 10 -Compress
+
+        try {
+            $Result = Invoke-RestMethod -Method Post -Uri $URI -Body $Request -Header $Headers
+            $ResultArray+=$Result
+        } catch {
+            if ($_.Exception.Response.StatusCode -eq 429) {
+                $I--; #Decrement to retry current request after timeout
+                #https://adobe-apiplatform.github.io/umapi-documentation/en/api/getUsersWithPage.html#getUsersWithPageThrottle
+                Write-Warning "Adobe is throttling our user change request. This cmdlet will now sleep the requested $($_.Exception.Response.Headers["Retry-After"]) seconds before retrying..."
+                Start-Sleep -Seconds $_.Exception.Response.Headers["Retry-After"]
+                Write-Warning "Continuing with request."
+            } else {
+                Write-Warning -Message "Error occured in request, $($_.Exception)"    
+            }
+        }
+        Write-Progress -Activity "Sending requests" -Status "($I/$($RequestQue.Length))" -PercentComplete (100*$I/$RequestQue.Length)
+    }
+    Write-Progress -Activity "Sending requests" -Status "Done" -PercentComplete 100 -Completed
+    return $ResultArray
 }
 
 Export-ModuleMember -Function "New-Cert", "Import-PFXCert", "ConvertTo-Base64URL", "ConvertFrom-Base64URL", "ConvertFrom-Base64URLToBase64", 
