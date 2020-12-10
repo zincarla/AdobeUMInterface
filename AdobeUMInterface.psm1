@@ -1266,5 +1266,5 @@ Export-ModuleMember -Function "New-Cert", "Import-PFXCert", "ConvertTo-Base64URL
                                 "ConvertTo-JavaTime", "ConvertFrom-JavaTime", "New-ClientInformation", "Get-AdobeAuthToken", "Get-AdobeUsers", 
                                 "Get-AdobeGroups", "Get-AdobeGroupMembers", "Get-AdobeGroupAdmins", "New-CreateUserRequest", "New-RemoveUserRequest", 
                                 "New-RemoveUserFromGroupRequest", "New-GroupUserAddAction", "New-GroupUserRemoveAction", "New-AddToGroupRequest", 
-                                "New-RemoveFromGroupRequest", "Expand-JWTInformation", "Send-UserManagementRequest", "New-SyncADGroupRequest", 
+                                "Expand-JWTInformation", "Send-UserManagementRequest", "New-SyncADGroupRequest", 
                                 "New-RemoveUnusedAbobeUsersRequest", "Get-AdobeUser", "Import-AdobeUMCert"
