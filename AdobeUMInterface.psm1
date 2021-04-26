@@ -984,6 +984,9 @@ function New-AddToGroupRequest
     
 .PARAMETER CreateAsFederated
     If a new user needs to be created in Adobe, this switch creates them with a federatedID instead of an EnterpriseID
+
+.PARAMETER Country
+    Country for new users, defaults to US. This cannot be changed later. (Per adobe documentation)
     
 .PARAMETER ClientInformation
     Service account information including token
@@ -1009,6 +1012,7 @@ Function New-SyncADGroupRequest {
         $DeleteRemovedMembers,
         [switch]
         $CreateAsFederated,
+        [string]$Country="US", 
         [Parameter(Mandatory = $true)]
         [ValidateScript({
                 $_.Token -ne $null
@@ -1059,10 +1063,10 @@ Function New-SyncADGroupRequest {
                 $AddToGroup = New-GroupUserAddAction -Groups $AdobeGroupName
                 #Need to add
                 If ($CreateAsFederated) {
-                    $Request.Add($(New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup -IDType federated))
+                    $Request.Add($(New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country $Country -AdditionalActions $AddToGroup -IDType federated))
                 }
                 Else {
-                    $Request.Add($(New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country "US" -AdditionalActions $AddToGroup))
+                    $Request.Add($(New-CreateUserRequest -FirstName $ADUser.GivenName -LastName $ADUser.SurName -Email $ADUser.mail.ToLower() -Country $Country -AdditionalActions $AddToGroup))
                 }
             }
         }
