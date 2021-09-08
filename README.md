@@ -48,6 +48,8 @@ Send-UserManagementRequest -ClientInformation $ClientInformation -Requests $Requ
 
 ## Sync with an AD Group
 
+For an easier experience, consider using the official [Adobe User Sync Tool](https://helpx.adobe.com/enterprise/using/user-sync.html).
+
 The end-goal I had in mind for these was to automatically sync an AD group with Adobe's portal. This allows easy delegation to a service desk. The group used can also be tied in with AppLocker, and automatic deployments could use the same group in SCCM or another application management utility. The general pattern is:
 
 1) Create an active directory group that your Adobe Users will be added to
