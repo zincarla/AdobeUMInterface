@@ -1,6 +1,10 @@
-# AdobeUMInterface
+# AdobeUMInterface - Archived
 
 A PowerShell module for communicating with Adobe's User Management API. **Warning**, if you used prior versions of these functions, they are not compatible with recent changes. Most functions have been updated to use the [non-deprecated API functions.](https://Adobe-apiplatform.github.io/umapi-documentation/en/api/DeprecatedApis.html)
+
+# Archival
+
+At this point, I don't personally plan on updating this repository anymore. I would suggest moving to [Adobe's User-Sync tool](https://helpx.adobe.com/enterprise/using/user-sync.html). That said, these functions still work if you need additional control over specific aspects of the API or want to reverse engineer the repo to see how to communicate with Adobe's API.
 
 ## General Request Pattern
 
